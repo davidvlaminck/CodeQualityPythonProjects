@@ -83,6 +83,5 @@ result = subprocess.run(cmd, shell=True)  # noqa: S602 - required for the legacy
 
 A `# noqa` without a reason is a review rejection.
 
-## Additional rules / manual conventions
-### Membership tests
-- Use a set (or tuple) for `x in {...}` membership checks instead of a list literal when there are 4 or more members. No ruff rule; manual convention.
+See `MANUAL-CONVENTIONS.md` for conventions that have no ruff rule (e.g.
+membership tests). That file is the append-only log for new manual rules.

@@ -1,8 +1,7 @@
 # CodeQualityPythonProjects
 
-Python code quality tooling for the `otlmow_model` package. It runs lint, format,
-type, test/coverage, complexity, CRAP, security and dead-code checks and renders a
-single QA dashboard with thresholds.
+Python code quality tooling. It runs lint, format, type, test/coverage, complexity,
+CRAP, security and dead-code checks and renders a single QA dashboard with thresholds.
 
 ## What it does
 

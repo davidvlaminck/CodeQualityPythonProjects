@@ -49,6 +49,7 @@ DEFAULT_THRESHOLDS = {
     'god_classes': 0,
     'unparsable_files': 0,
     'manual_conventions': 0,
+    'pip_audit_vulns': 0,
 }
 
 # Generated trees of this repository. They are rewritten by the daily
@@ -74,6 +75,7 @@ GATES = {
     'dead-code': ('dead_code', False),
     'god-classes': ('god_classes', False),
     'radon-parse': ('unparsable_files', False),
+    'pip-audit': ('pip_audit_vulns', False),
 }
 
 # The tool that produces the metric of a gate. A gate whose tool is missing
@@ -90,6 +92,7 @@ GATE_TOOLS = {
     'dead-code': 'vulture',
     'god-classes': 'ast',
     'radon-parse': 'radon',
+    'pip-audit': 'pip-audit',
 }
 
 
@@ -327,8 +330,27 @@ def run_bandit(source: str, excludes: tuple[str, ...] = ()) -> dict[str, Any]:
     return counts
 
 
+def run_pip_audit() -> dict[str, Any]:
+    """Count known vulnerabilities in the project dependencies."""
+    command = _tool('pip-audit')
+    if command is None:
+        return {'available': False, 'vulns': 0}
+    code, output = _run([*command, '-f', 'json'])
+    try:
+        data = json.loads(output or '[]')
+    except json.JSONDecodeError:
+        return {'available': True, 'vulns': 0, 'error': output.strip()[:500]}
+    count = 0
+    if isinstance(data, list):
+        for item in data:
+            count += len(item.get('vulns', []))
+    elif isinstance(data, dict):
+        for item in data.get('dependencies', []):
+            count += len(item.get('vulns', []))
+    return {'available': True, 'vulns': count, 'exit_code': code}
+
+
 def check_membership_tests(paths: list[str]) -> int:
-    """Count list literals with 4+ items used in membership tests."""
     import re
     count = 0
     for p in paths:
@@ -512,6 +534,7 @@ def render_thresholds(snapshot: dict[str, Any]) -> list[str]:
         ),
         ('bandit HIGH issues', 'bandit_high', False, f'{metrics["bandit_high"]}'),
         ('dead code items', 'dead_code', False, f'{metrics["dead_code"]}'),
+        ('pip-audit vulnerabilities', 'pip_audit_vulns', False, f'{metrics["pip_audit_vulns"]}'),
         ('god classes', 'god_classes', False, f'{metrics["god_classes"]}'),
         (
             'files radon cannot parse',
@@ -832,6 +855,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
     pytest_result = run_pytest(args.source, args.coverage, args.skip_tests)
     bandit = run_bandit(args.source, excludes)
     vulture = run_vulture(args.source, excludes)
+    pip_audit = run_pip_audit()
     god_classes = detect_god_classes(args.source, excludes)
     unparsable = find_unparsable(args.source, excludes)
     crap_rows: list[dict[str, Any]] = []
@@ -853,6 +877,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'max_complexity': max((row['complexity'] for row in crap_rows), default=0),
         'bandit_high': bandit.get('high', 0),
         'dead_code': vulture.get('items', 0),
+        'pip_audit_vulns': pip_audit.get('vulns', 0),
         'god_classes': god_classes.get('count', 0),
         'unparsable_files': len(unparsable),
         'manual_conventions': manual.get('items', 0),
@@ -863,6 +888,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'mypy': mypy.get('available', False),
         'bandit': bandit.get('available', False),
         'vulture': vulture.get('available', False),
+        'pip-audit': pip_audit.get('available', False),
         'radon': bool(crap_rows) or bool(unparsable),
         'pytest': pytest_result.get('available', False),
     }

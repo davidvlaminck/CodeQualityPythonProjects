@@ -48,6 +48,7 @@ DEFAULT_THRESHOLDS = {
     'dead_code': 0,
     'god_classes': 0,
     'unparsable_files': 0,
+    'manual_conventions': 0,
 }
 
 # Generated trees of this repository. They are rewritten by the daily
@@ -326,6 +327,35 @@ def run_bandit(source: str, excludes: tuple[str, ...] = ()) -> dict[str, Any]:
     return counts
 
 
+def check_membership_tests(paths: list[str]) -> int:
+    """Count list literals with 4+ items used in membership tests."""
+    import re
+    count = 0
+    for p in paths:
+        if not p:
+            continue
+        for path in Path(p).rglob('*.py'):
+            try:
+                text = path.read_text(encoding='utf-8', errors='ignore')
+            except OSError:
+                continue
+            for match in re.finditer(r'\bin\s*\[([^\]]*)\]', text):
+                items = [x for x in match.group(1).split(',') if x.strip()]
+                if len(items) >= 4:
+                    count += 1
+    return count
+
+
+MANUAL_CHECKS = [check_membership_tests]
+
+
+def run_manual_conventions(source: str, tests: str, scripts: str, tooling: str = '') -> dict[str, Any]:
+    """Run all registered manual-convention checks and sum their counts."""
+    paths = [source, tests, scripts, tooling]
+    total = sum(check(paths) for check in MANUAL_CHECKS)
+    return {'available': True, 'items': total}
+
+
 def run_vulture(source: str, excludes: tuple[str, ...] = ()) -> dict[str, Any]:
     """Count likely dead code at confidence 80."""
     command = _tool('vulture')
@@ -489,6 +519,7 @@ def render_thresholds(snapshot: dict[str, Any]) -> list[str]:
             False,
             f'{metrics["unparsable_files"]}',
         ),
+        ('manual conventions', 'manual_conventions', False, f'{metrics["manual_conventions"]}'),
     ]
     lines = [
         f'# QA Report — {snapshot["repo"]}',
@@ -801,18 +832,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
     bandit = run_bandit(args.source, excludes)
     vulture = run_vulture(args.source, excludes)
     god_classes = detect_god_classes(args.source, excludes)
-    unparsable = find_unparsable(args.source, excludes)
-
-    crap_rows: list[dict[str, Any]] = []
-    if Path(args.coverage).exists():
-        crap_rows = [row.__dict__ for row in compute_crap(args.coverage, args.source, excludes)]
-    hotspots = [spot.__dict__ for spot in compute_hotspots(args.source, args.churn_since, excludes)]
-
-    split = coverage_split(args.coverage, excludes)
-    owned_line, owned_branch = owned_coverage(split)
-    package_line = pytest_result.get('percent', 0.0)
-    package_branch = pytest_result.get('branch_percent', 0.0)
-
+    manual = run_manual_conventions(args.source, args.tests, args.scripts, args.tooling)
     metrics = {
         'ruff_issues': ruff['total'],
         'ruff_format_files': ruff_format['files'],
@@ -825,6 +845,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'dead_code': vulture.get('items', 0),
         'god_classes': god_classes.get('count', 0),
         'unparsable_files': len(unparsable),
+        'manual_conventions': manual.get('items', 0),
     }
 
     tools = {

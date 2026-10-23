@@ -770,6 +770,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--source', default='src')
     parser.add_argument('--tests', default='UnitTests')
     parser.add_argument('--scripts', default='code_quality/scripts')
+    parser.add_argument('--tooling', default='')
     parser.add_argument(
         '--exclude',
         default=','.join(DEFAULT_EXCLUDES),
@@ -832,7 +833,16 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
     bandit = run_bandit(args.source, excludes)
     vulture = run_vulture(args.source, excludes)
     god_classes = detect_god_classes(args.source, excludes)
+    unparsable = find_unparsable(args.source, excludes)
+    crap_rows: list[dict[str, Any]] = []
+    if Path(args.coverage).exists():
+        crap_rows = [row.__dict__ for row in compute_crap(args.coverage, args.source, excludes)]
+    hotspots = [spot.__dict__ for spot in compute_hotspots(args.source, args.churn_since, excludes)]
     manual = run_manual_conventions(args.source, args.tests, args.scripts, args.tooling)
+    split = coverage_split(args.coverage, excludes)
+    owned_line, owned_branch = owned_coverage(split)
+    package_line = pytest_result.get('percent', 0.0)
+    package_branch = pytest_result.get('branch_percent', 0.0)
     metrics = {
         'ruff_issues': ruff['total'],
         'ruff_format_files': ruff_format['files'],

@@ -50,6 +50,7 @@ DEFAULT_THRESHOLDS = {
     'unparsable_files': 0,
     'manual_conventions': 0,
     'pip_audit_vulns': 0,
+    'import_architecture_violations': 0,
 }
 
 # Generated trees of this repository. They are rewritten by the daily
@@ -76,6 +77,7 @@ GATES = {
     'god-classes': ('god_classes', False),
     'radon-parse': ('unparsable_files', False),
     'pip-audit': ('pip_audit_vulns', False),
+    'import-architecture': ('import_architecture_violations', False),
 }
 
 # The tool that produces the metric of a gate. A gate whose tool is missing
@@ -376,6 +378,25 @@ def run_manual_conventions(source: str, tests: str, scripts: str, tooling: str =
     paths = [source, tests, scripts, tooling]
     total = sum(check(paths) for check in MANUAL_CHECKS)
     return {'available': True, 'items': total}
+
+
+def run_lint_imports() -> dict[str, Any]:
+    """Check import architecture with import-linter (report-only)."""
+    command = _tool('lint-imports')
+    if command is None:
+        return {'available': False, 'violations': 0, 'status': 'not enabled'}
+    code, output = _run([*command])
+    if code == 0 and ('contracts' in output.lower() or output.strip() == ''):
+        return {'available': True, 'violations': 0, 'status': 'ok', 'exit_code': code}
+    # Try to count "broken contract" / "violation" lines
+    violations = 0
+    for line in output.splitlines():
+        lower = line.lower()
+        if 'broken contract' in lower or 'violation' in lower or 'forbidden' in lower and 'ok' not in lower:
+            violations += 1
+    if violations == 0 and code != 0:
+        violations = 1
+    return {'available': True, 'violations': violations, 'status': 'violations' if violations else ('ok' if code == 0 else 'unknown'), 'exit_code': code, 'sample': output.strip()[:500]}
 
 
 def run_vulture(source: str, excludes: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -881,6 +902,8 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'god_classes': god_classes.get('count', 0),
         'unparsable_files': len(unparsable),
         'manual_conventions': manual.get('items', 0),
+        'import_architecture_violations': lint_imports.get('violations', 0),
+        'import_architecture_status': lint_imports.get('status', 'not enabled'),
     }
 
     tools = {

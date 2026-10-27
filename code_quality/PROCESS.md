@@ -415,37 +415,23 @@ behaviour (review that diff with the same care as the code change).
 
 ---
 
-## 8. Test strength — coverage is not proof
+### 8.1 Import architecture (import-linter)
 
-Coverage says a line ran. It does not say an assertion checked it. A test suite can
-sit at 91 % coverage and assert nothing meaningful. Mutation testing measures the
-thing that actually matters: **would the test fail if the code were wrong?**
+Detect import cycles and enforce architectural boundaries. **Optional and report-only by default.**
 
-```toml
-# pyproject.toml
-[tool.mutmut]
-source_paths = ["otlmow_model"]
-tests_dir = ["UnitTests"]        # a list in pyproject.toml, a string in setup.cfg
-```
-
-```bash
-uv run mutmut run
-uv run mutmut results
-```
-
-- `source_paths` is mandatory; without it mutmut cannot find the code to mutate.
-- The package must be importable under its real name (mutmut's trampoline rejects
-  `src.module` style package names).
-- Interpret the score as *surviving mutants*, not as a percentage to optimise. A
-  surviving mutant is either a missing test or a genuinely equivalent mutation —
-  review them, then write the test or add `# noqa` with a reason.
-
-Adopt mutation testing per module, starting with the module you are about to
-refactor. A module with no surviving mutants can be refactored with far less fear.
-
----
+- **Install:** `uv pip install import-linter`
+- **Discover:** have an agent map actual imports (`grep -rn "^from .*import\|^import " <package>` or `pydeps`/`pipdeptree`) to find natural layers and cycles.
+- **Configure:** add `[tool.importlinter]` + contracts to `pyproject.toml` (`root_packages`, `layers`/`forbidden`). Agents can draft; a human must approve boundaries.
+- **Integrate:** add `run_lint_imports()` to `code_quality/scripts/qa_report.py` as report-only. If not configured/installed, show `import cycles/architecture: not enabled` in `QA-REPORT.md` and `reports/qa.json` (no failure).
+- **Adopt:** fix cycles/contracts until green, then consider adding to `--fail-on` later. 
 
 ## 9. CRAP score and change hot spots
+
+### 9.1 Formula
+
+```
+CRAP = complexity² × (1 − coverage/100)³ + complexity
+```
 
 ### 9.1 Formula
 

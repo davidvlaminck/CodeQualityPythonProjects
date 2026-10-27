@@ -564,6 +564,8 @@ def render_thresholds(snapshot: dict[str, Any]) -> list[str]:
             f'{metrics["unparsable_files"]}',
         ),
         ('manual conventions', 'manual_conventions', False, f'{metrics["manual_conventions"]}'),
+        ('import cycles/architecture', 'import_architecture_violations', False,
+         'not enabled' if metrics.get('import_architecture_status') == 'not enabled' else str(metrics.get('import_architecture_violations', 0))),
     ]
     lines = [
         f'# QA Report — {snapshot["repo"]}',
@@ -582,10 +584,11 @@ def render_thresholds(snapshot: dict[str, Any]) -> list[str]:
         glyph = (
             '🔴'
             if (metric == 'ruff_format_files' and format_files < 0)
-            else status(metrics[metric], thresholds[metric], higher_is_better)
+            else ('⚪' if label == 'import cycles/architecture' and current == 'not enabled' else status(metrics.get(metric, 0), thresholds.get(metric, 0), higher_is_better))
         )
         comparison = '≥' if higher_is_better else '≤'
-        lines.append(f'| {label} | {comparison} {thresholds[metric]} | {current} | {glyph} |')
+        threshold_display = '—' if label == 'import cycles/architecture' and current == 'not enabled' else thresholds.get(metric, 0)
+        lines.append(f'| {label} | {comparison} {threshold_display} | {current} | {glyph} |')
     lines.append('')
     return lines
 
@@ -884,6 +887,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         crap_rows = [row.__dict__ for row in compute_crap(args.coverage, args.source, excludes)]
     hotspots = [spot.__dict__ for spot in compute_hotspots(args.source, args.churn_since, excludes)]
     manual = run_manual_conventions(args.source, args.tests, args.scripts, args.tooling)
+    lint_imports = run_lint_imports()
     split = coverage_split(args.coverage, excludes)
     owned_line, owned_branch = owned_coverage(split)
     package_line = pytest_result.get('percent', 0.0)
@@ -914,6 +918,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'pip-audit': pip_audit.get('available', False),
         'radon': bool(crap_rows) or bool(unparsable),
         'pytest': pytest_result.get('available', False),
+        'lint-imports': lint_imports.get('available', False),
     }
 
     return {

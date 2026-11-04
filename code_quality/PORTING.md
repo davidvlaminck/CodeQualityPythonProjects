@@ -20,6 +20,15 @@ The bundle is designed to be copied. This section is the checklist for doing tha
 | `pyproject.toml` | `[tool.ruff*]`, `[tool.mypy]`: the `src`, `extend-exclude` and `per-file-ignores` paths. |
 | `DEFAULT_EXCLUDES` in both scripts | the generated trees of the repository. A repository without generated code sets it to an empty list. |
 
+### Ruff integration gotchas (read before copying)
+
+| Gotcha | Why it breaks | Fix in `code_quality/scripts/qa_report.py` |
+|---|---|---|
+| Empty `tooling` passed to ruff | `run_ruff()` appended `tooling=""` unconditionally. Ruff 0.17 exits with "a value is required for '[FILES]...'" when given an empty positional argument, so `ruff check` crashes and reports 0 issues. | `run_ruff()` builds `paths = [source, tests, scripts]` and only appends `tooling` when truthy. `run_ruff_format()` already does this. |
+| Python 2 exception syntax | `except OSError, SyntaxError, ...:` is invalid in Python 3 and makes `py_compile` fail before any check runs. | Convert to `except (OSError, SyntaxError, UnicodeDecodeError, ValueError):`. Search the bundle for any `except X, Y:` and convert. |
+| Missing ruff reports 0 | A missing tool returns `{'available': False, 'total': 0}`, which looks like a clean run and hides the gap. | The report lists tools not available and treats a missing tool as a failed gate. Install ruff explicitly in CI; don't rely on `uv sync` keeping it. |
+| Formatter crash hidden | `ruff format` can panic and produce no parseable output, so the counter reports 0 files and the gate never fails. | `run_ruff_format()` detects `panicked`/`panicked at` in output, sets `files = -1`, and records an error. |
+
 ### Do not copy
 
 `code_quality/QA-REPORT.md` and `code_quality/reports/` — they are generated.
@@ -38,5 +47,17 @@ metrics and write `QA-REPORT.md`. If `radon` is missing, the CRAP table comes ba
 empty — install it (`uv pip install radon`) or let the script use `uvx radon`. The
 report lists the tools that were not available: a missing tool is reported as a
 failed gate, never as a clean run.
+
+### Prevention checklist for other repos
+
+- [ ] Pin tooling: pin `ruff` (and `mypy`, `radon`) versions in CI to avoid behavior changes between versions.
+- [ ] Don't pass empty args: never pass empty strings to CLI tools. Filter truthy paths.
+- [ ] Python 3 syntax: no Python 2 exception syntax anywhere in the bundle.
+- [ ] Handle missing tools: the "missing tool reports 0" behavior is dangerous. Consider failing if required tools aren't available, or at least warn loudly.
+- [ ] Test in clean env: run `qa_report.py` in a fresh venv/container before committing the bundle.
+- [ ] Format first: run `ruff format` on the repo before first report generation.
+- [ ] Crash detection: keep detection for `panicked` in formatter output.
+- [ ] uv sync gotcha: if using `uv`, note `uv sync` can remove manually installed tools - install explicitly.
+- [ ] Path configuration: ensure `--source`, `--tests`, `--scripts` passed to the report match the repo structure.
 
 ---

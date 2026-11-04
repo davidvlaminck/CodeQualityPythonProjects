@@ -119,7 +119,10 @@ def run_ruff(source: str, tests: str, scripts: str, tooling: str = '') -> dict[s
     command = _tool('ruff')
     if command is None:
         return {'available': False, 'total': 0, 'per_rule': {}, 'fixable': 0}
-    code, output = _run([*command, 'check', '--output-format=json', source, tests, scripts, tooling])
+    paths = [source, tests, scripts]
+    if tooling:
+        paths.append(tooling)
+    code, output = _run([*command, 'check', '--output-format=json', *paths])
     try:
         findings = json.loads(output or '[]')
     except json.JSONDecodeError:
@@ -814,6 +817,7 @@ def render_report(snapshot: dict[str, Any], history: list[dict[str, Any]], regre
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse the command line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source', default='API')
     parser.add_argument('--tests', default='UnitTests')
     parser.add_argument('--scripts', default='code_quality/scripts')
     parser.add_argument('--tooling', default='')

@@ -70,13 +70,14 @@ the next one.
 | Duplication | `jscpd` | copy-paste | — |
 | Import cycles | `lint-imports` | architectural drift | — |
 | Docstrings | `pydoclint` | docstring/signature mismatch | — |
+| Slop/verbosity | `scb-check` | verbosity, erosion, trivial wrappers | — |
 
 Install the quality tools **into the project virtualenv** so they see the project
 dependencies:
 
 ```bash
 uv pip install ruff==0.17.0 "mypy<2" radon bandit vulture
-uv pip install mutmut pip-audit jscpd        # optional, see sections 8 and 3
+uv pip install mutmut pip-audit jscpd scb-check        # optional, see sections 8 and 3
 ```
 
 `radon` is optional — `scripts/crap_scores.py` falls back to `uvx radon` when it is

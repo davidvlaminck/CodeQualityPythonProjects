@@ -53,7 +53,7 @@ jobs:
         # minimum version this package supports.
         # Note: `uv sync` removes tools that are not in the lock file, so install
         # the quality tools explicitly instead of using `uv sync`.
-        run: uv pip install ruff==0.17.0 "mypy<2" radon bandit vulture pip-audit
+        run: uv pip install ruff==0.17.0 "mypy<2" radon bandit vulture pip-audit scb-check
 
       - name: Tests and coverage
         env:
@@ -90,6 +90,10 @@ jobs:
       - name: Dependency audit
         continue-on-error: true
         run: uv run pip-audit
+
+      - name: scb-check
+        continue-on-error: true
+        run: uv run scb-check check <package> UnitTests code_quality/scripts --output-format json --report
 
       - name: Quality gates
         # The gates that block a merge, on top of the ratchet that every run

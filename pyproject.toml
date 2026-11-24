@@ -3,3 +3,9 @@ name = "codequalitypythonprojects"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = []
+
+[tool.ruff.lint]
+extend-select = [
+    "SIM",  # flake8-simplify (catches redundant conditions & nested logic)
+    "PLR",  # Pylint Refactor (catches too many returns, args, or branches)
+]

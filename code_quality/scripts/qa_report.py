@@ -51,6 +51,8 @@ DEFAULT_THRESHOLDS = {
     'manual_conventions': 0,
     'pip_audit_vulns': 0,
     'import_architecture_violations': 0,
+    'scb_verbosity': 0.1,
+    'scb_erosion': 0.3,
 }
 
 # Generated trees of this repository. They are rewritten by the daily
@@ -78,6 +80,8 @@ GATES = {
     'radon-parse': ('unparsable_files', False),
     'pip-audit': ('pip_audit_vulns', False),
     'import-architecture': ('import_architecture_violations', False),
+    'scb-verbosity': ('scb_verbosity', False),
+    'scb-erosion': ('scb_erosion', False),
 }
 
 # The tool that produces the metric of a gate. A gate whose tool is missing
@@ -95,6 +99,8 @@ GATE_TOOLS = {
     'god-classes': 'ast',
     'radon-parse': 'radon',
     'pip-audit': 'pip-audit',
+    'scb-verbosity': 'scb-check',
+    'scb-erosion': 'scb-check',
 }
 
 
@@ -355,6 +361,28 @@ def run_pip_audit() -> dict[str, Any]:
     return {'available': True, 'vulns': count, 'exit_code': code}
 
 
+def run_scb_check(source: str, tests: str, scripts: str, tooling: str = '') -> dict[str, Any]:
+    """Run scb-check and return verbosity and erosion scores."""
+    command = _tool('scb-check')
+    if command is None:
+        return {'available': False, 'verbosity': 0.0, 'erosion': 0.0}
+    paths = [source, tests, scripts]
+    if tooling:
+        paths.append(tooling)
+    scb_command = [*command, 'check', *paths, '--output-format', 'json']
+    code, output = _run(scb_command)
+    try:
+        data = json.loads(output or '{}')
+    except json.JSONDecodeError:
+        return {'available': True, 'verbosity': 0.0, 'erosion': 0.0, 'error': output.strip()[:500]}
+    return {
+        'available': True,
+        'verbosity': float(data.get('verbosity', 0.0)),
+        'erosion': float(data.get('erosion', 0.0)),
+        'exit_code': code,
+    }
+
+
 def check_membership_tests(paths: list[str]) -> int:
     import re
     count = 0
@@ -569,6 +597,8 @@ def render_thresholds(snapshot: dict[str, Any]) -> list[str]:
         ('manual conventions', 'manual_conventions', False, f'{metrics["manual_conventions"]}'),
         ('import cycles/architecture', 'import_architecture_violations', False,
          'not enabled' if metrics.get('import_architecture_status') == 'not enabled' else str(metrics.get('import_architecture_violations', 0))),
+        ('scb-check verbosity', 'scb_verbosity', False, f'{metrics["scb_verbosity"]}'),
+        ('scb-check erosion', 'scb_erosion', False, f'{metrics["scb_erosion"]}'),
     ]
     lines = [
         f'# QA Report — {snapshot["repo"]}',
@@ -885,6 +915,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
     pip_audit = run_pip_audit()
     god_classes = detect_god_classes(args.source, excludes)
     unparsable = find_unparsable(args.source, excludes)
+    scb_check = run_scb_check(args.source, args.tests, args.scripts, args.tooling)
     crap_rows: list[dict[str, Any]] = []
     if Path(args.coverage).exists():
         crap_rows = [row.__dict__ for row in compute_crap(args.coverage, args.source, excludes)]
@@ -911,6 +942,8 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'manual_conventions': manual.get('items', 0),
         'import_architecture_violations': lint_imports.get('violations', 0),
         'import_architecture_status': lint_imports.get('status', 'not enabled'),
+        'scb_verbosity': round(scb_check.get('verbosity', 0.0), 4),
+        'scb_erosion': round(scb_check.get('erosion', 0.0), 4),
     }
 
     tools = {
@@ -922,6 +955,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
         'radon': bool(crap_rows) or bool(unparsable),
         'pytest': pytest_result.get('available', False),
         'lint-imports': lint_imports.get('available', False),
+        'scb-check': scb_check.get('available', False),
     }
 
     return {
@@ -988,7 +1022,6 @@ def main(argv: list[str] | None = None) -> int:
     collected = collect(args)
     metrics = collected['metrics']
     snapshot = build_snapshot(thresholds, enforced, collected)
-    failed = snapshot['failed_gates']
     all_met = snapshot['all_gates_met']
 
     history = read_history()
